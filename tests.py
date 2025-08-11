@@ -1,23 +1,23 @@
-from functions.get_files_info import get_file_content
+from functions.get_files_info import write_file
 from config import MAX_CHARS
 
 
-result = get_file_content("calculator", "main.py")
+#result = write_file("calculator", "main.py")
+#print("Result for current directory:")
+#print(result)
+#print("")
+
+
+
+result = write_file("calculator", "lorem.txt", "wait, this isn't lorem ipsum")
 print("Result for current directory:")
 print(result)
 print("")
-
-result = get_file_content("calculator", "pkg/calculator.py")
+result = write_file("calculator", "pkg/morelorem.txt", "lorem ipsum dolor sit amet")
 print("Result for current directory:")
 print(result)
 print("")
-
-result = get_file_content("calculator", "/bin/cat")
-print("Result for current directory:")
-print(result)
-print("")
-
-result = get_file_content("calculator", "pkg/does_not_exsist.py")
+result = write_file("calculator", "/tmp/temp.txt", "this should not be allowed")
 print("Result for current directory:")
 print(result)
 print("")
