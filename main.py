@@ -5,7 +5,12 @@ from google.genai import types
 from dotenv import load_dotenv
 from functions.get_files_info import *
 
-
+function_map_dictionary = {
+    "get_file_content" : get_file_content,
+    "get_files_info":  get_files_info,
+    "run_python_file" : run_python_file,
+    "write_file" : write_file,
+    }
 
 def generate_content(client, messages, verbose, user_prompt):
     response = client.models.generate_content(
@@ -13,7 +18,7 @@ def generate_content(client, messages, verbose, user_prompt):
         contents=messages,
         config = types.GenerateContentConfig(
             tools = [available_functions],
-            system_instruction = system_prompt #system_instruction = types.Part(text = system_prompt)
+            system_instruction = system_prompt
         )
     )
     if verbose:
@@ -23,12 +28,49 @@ def generate_content(client, messages, verbose, user_prompt):
     
     if response.function_calls:
         print("Response:")
-        print(f"Calling function: {response.function_calls[0].name}({response.function_calls[0].args})")
+        function_call_result = call_function(response.function_calls[0], verbose)
+        try:
+            response_data = function_call_result.parts[0].function_response.response
+            if verbose:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
+        except Exception as e:
+            raise Exception("Fatal Error: Unexpected function call result structure.")
+
     else:
         print("Response:")
         print(response.text)
+    return response
 
 
+
+def call_function(function_call_part, verbose=False):
+    if function_call_part.name not in function_map_dictionary:
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                name=function_call_part.name,
+                response={"error": f"Unknown function: {function_call_part.name}"},
+                )
+            ],
+        )
+    function_call_part.args["working_directory"] = "./calculator"
+    if verbose:
+        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+    else:
+        print(f" - Calling function: {function_call_part.name}")
+    
+    called_function = function_map_dictionary[function_call_part.name](**function_call_part.args)
+    
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_call_part.name,
+                response={"result": called_function},
+            )
+        ],
+    )
 
 
 
@@ -49,7 +91,7 @@ def main():
     ]
 
 
-    #verify correct program usage
+    
     if user_prompt == "":
         print('ERROR: uv run main.py "Enter your prompt here" ')
         sys.exit(1)
@@ -59,8 +101,28 @@ def main():
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
     
-    generate_content(client,messages,verbose, user_prompt)
     
+    for attempt in range(20):
+        response = generate_content(client, messages, verbose, user_prompt)
+
+        for candidate in getattr(response, "candidates", []):
+            messages.append(candidate.content)
+
+    # Handle function/tool calls and add tool output message if needed
+        if getattr(response, "function_calls", None):
+            for function_call in response.function_calls:
+                function_result = call_function(response.function_calls[0], verbose)
+                messages.append(function_result)
+
+    # Only break and print when 
+    # - there are no more function_calls
+    # - and response.text is present (so, end of thinking)
+        if (not getattr(response, "function_calls", None) 
+            and hasattr(response, "text") 
+            and response.text):
+            print("Final response:")
+            print(response.text)
+            break
 
 
 if __name__ == "__main__":
